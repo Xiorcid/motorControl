@@ -66,10 +66,13 @@ void Error_Handler(void);
 #define HROT_EXTI_IRQn EXTI9_5_IRQn
 #define H1_Pin GPIO_PIN_13
 #define H1_GPIO_Port GPIOB
+#define H1_EXTI_IRQn EXTI15_10_IRQn
 #define H2_Pin GPIO_PIN_14
 #define H2_GPIO_Port GPIOB
+#define H2_EXTI_IRQn EXTI15_10_IRQn
 #define H3_Pin GPIO_PIN_15
 #define H3_GPIO_Port GPIOB
+#define H3_EXTI_IRQn EXTI15_10_IRQn
 #define PH1L_Pin GPIO_PIN_7
 #define PH1L_GPIO_Port GPIOC
 #define PH2L_Pin GPIO_PIN_8

@@ -50,6 +50,7 @@ DMA_HandleTypeDef hdma_adc1;
 I2C_HandleTypeDef hi2c1;
 
 TIM_HandleTypeDef htim1;
+TIM_HandleTypeDef htim2;
 
 /* USER CODE BEGIN PV */
 uint8_t duty;
@@ -60,6 +61,10 @@ uint32_t last_intervals[50];
 uint8_t intereval_ptr = 0;
 
 uint32_t disp_tmr;
+uint32_t comm_tmr;
+uint32_t last_comm;
+
+uint8_t gase_zero_pos;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -69,6 +74,7 @@ static void MX_DMA_Init(void);
 static void MX_ADC1_Init(void);
 static void MX_TIM1_Init(void);
 static void MX_I2C1_Init(void);
+static void MX_TIM2_Init(void);
 /* USER CODE BEGIN PFP */
 void setPhases(int PH1, int PH2, int PH3);
 /* USER CODE END PFP */
@@ -111,6 +117,7 @@ int main(void)
   MX_ADC1_Init();
   MX_TIM1_Init();
   MX_I2C1_Init();
+  MX_TIM2_Init();
   /* USER CODE BEGIN 2 */
   HAL_GPIO_TogglePin(LED_GPIO_Port, LED_Pin);
   HAL_Delay(200);
@@ -121,55 +128,39 @@ int main(void)
   HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_1);
   HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_2);
   HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_3);
-
+  
+  duty = 127;
   setPhases(PH_Z, PH_L, PH_H);
   HAL_Delay(100);
   setPhases(PH_Z, PH_Z, PH_Z);
 
   SSD1306_Init (); // initialise the display 
+  gase_zero_pos = value_adc;
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   while (1)
   {
-    halls[0] = HAL_GPIO_ReadPin(H1_GPIO_Port, H1_Pin);
-    halls[1] = HAL_GPIO_ReadPin(H2_GPIO_Port, H2_Pin);
-    halls[2] = HAL_GPIO_ReadPin(H3_GPIO_Port, H3_Pin); 
-
-    duty = (value_adc - 0) * (255 - 0) / (4095 - 0) + 0;
-
-    // SET CORRECT CONFIG
-    if(!halls[0] && !halls[1] && halls[2]){
-      setPhases(PH_Z, PH_L, PH_H);
-    }else if(halls[0] && !halls[1] && halls[2]){
-      setPhases(PH_H, PH_L, PH_Z);
-    }else if(halls[0] && !halls[1] && !halls[2]){
-      setPhases(PH_H, PH_Z, PH_L);
-    }else if(halls[0] && halls[1] && !halls[2]){
-      setPhases(PH_Z, PH_H, PH_L);
-    }else if(!halls[0] && halls[1] && !halls[2]){
-      setPhases(PH_L, PH_H, PH_Z);
-    }else if(!halls[0] && halls[1] && halls[2]){
-      setPhases(PH_L, PH_Z, PH_H);
-    }else{ // UNEXPECTED VALUE
-      setPhases(PH_Z, PH_Z, PH_Z); // DISABLE PHASES
-    }     
+    duty = (value_adc - gase_zero_pos) * (255 - 0) / (4095 - gase_zero_pos) + 0;  
 
     HAL_ADC_Start(&hadc1);  
 
-    if(HAL_GetTick() - disp_tmr > 30){
-      char buf[20];
-      SSD1306_GotoXY (10,10); // goto 10, 10 
-      uint64_t sum;
-      uint32_t avg_time = 0;
-      for (uint8_t i = 0; i < 50; i++){
-        sum += last_intervals[i];
-      }
-      avg_time = sum/50;
-      sprintf(buf, "%d ms", avg_time);
-      SSD1306_Puts (buf, &Font_11x18, 1); // print Hello 
+    if(HAL_GetTick() - disp_tmr > 15){
+      char gase_buf[6];
+      uint8_t gase = duty * 100 / 255;
+      sprintf(gase_buf, "%d %%", gase);
+
+      char rpm_buf[15];
+      uint16_t rpm = 60000 / comm_tmr;
+      sprintf(rpm_buf, "%d RPM", rpm);
+      SSD1306_Clear();
+      SSD1306_GotoXY(10, 10);
+      SSD1306_Puts (gase_buf, &Font_11x18, 1); // print Hello 
+      SSD1306_GotoXY(10, 25);
+      SSD1306_Puts (rpm_buf, &Font_11x18, 1); // print Hello 
       SSD1306_UpdateScreen(); // update screen
+      disp_tmr = HAL_GetTick();
     }
     /* USER CODE END WHILE */
 
@@ -389,6 +380,51 @@ static void MX_TIM1_Init(void)
 }
 
 /**
+  * @brief TIM2 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_TIM2_Init(void)
+{
+
+  /* USER CODE BEGIN TIM2_Init 0 */
+
+  /* USER CODE END TIM2_Init 0 */
+
+  TIM_ClockConfigTypeDef sClockSourceConfig = {0};
+  TIM_MasterConfigTypeDef sMasterConfig = {0};
+
+  /* USER CODE BEGIN TIM2_Init 1 */
+
+  /* USER CODE END TIM2_Init 1 */
+  htim2.Instance = TIM2;
+  htim2.Init.Prescaler = 71;
+  htim2.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim2.Init.Period = 65535;
+  htim2.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  htim2.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  if (HAL_TIM_Base_Init(&htim2) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sClockSourceConfig.ClockSource = TIM_CLOCKSOURCE_INTERNAL;
+  if (HAL_TIM_ConfigClockSource(&htim2, &sClockSourceConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
+  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
+  if (HAL_TIMEx_MasterConfigSynchronization(&htim2, &sMasterConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN TIM2_Init 2 */
+
+  /* USER CODE END TIM2_Init 2 */
+
+}
+
+/**
   * Enable DMA controller clock
   */
 static void MX_DMA_Init(void)
@@ -439,13 +475,16 @@ static void MX_GPIO_Init(void)
 
   /*Configure GPIO pins : H1_Pin H2_Pin H3_Pin */
   GPIO_InitStruct.Pin = H1_Pin|H2_Pin|H3_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+  GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING_FALLING;
   GPIO_InitStruct.Pull = GPIO_PULLUP;
   HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
   /* EXTI interrupt init*/
   HAL_NVIC_SetPriority(EXTI9_5_IRQn, 0, 0);
   HAL_NVIC_EnableIRQ(EXTI9_5_IRQn);
+
+  HAL_NVIC_SetPriority(EXTI15_10_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(EXTI15_10_IRQn);
 
 /* USER CODE BEGIN MX_GPIO_Init_2 */
 /* USER CODE END MX_GPIO_Init_2 */
@@ -478,16 +517,39 @@ void setPhases(int PH1, int PH2, int PH3){
   }
 }
 
+uint32_t GetMicroseconds(void) {
+    return __HAL_TIM_GET_COUNTER(&htim2); // Get current counter value
+}
+
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 {
   if(GPIO_Pin == GPIO_PIN_6) {
     HAL_GPIO_TogglePin(LED_GPIO_Port, LED_Pin);
-    last_intervals[intereval_ptr] = HAL_GetTick() - last_pulse_time;
-    last_pulse_time = HAL_GetTick();
-    if(intereval_ptr == 49){intereval_ptr = 0;}
-    else{intereval_ptr++;}
+    comm_tmr = HAL_GetTick() - last_comm;
+    last_comm = HAL_GetTick();
+  }else if(GPIO_Pin == GPIO_PIN_13 || GPIO_Pin == GPIO_PIN_14 || GPIO_Pin == GPIO_PIN_15){
+    halls[0] = HAL_GPIO_ReadPin(H1_GPIO_Port, H1_Pin);
+    halls[1] = HAL_GPIO_ReadPin(H2_GPIO_Port, H2_Pin);
+    halls[2] = HAL_GPIO_ReadPin(H3_GPIO_Port, H3_Pin); 
+
+    // SET CORRECT CONFIG
+    if(!halls[0] && !halls[1] && halls[2]){
+      setPhases(PH_Z, PH_L, PH_H);
+    }else if(halls[0] && !halls[1] && halls[2]){
+      setPhases(PH_H, PH_L, PH_Z);
+    }else if(halls[0] && !halls[1] && !halls[2]){
+      setPhases(PH_H, PH_Z, PH_L);
+    }else if(halls[0] && halls[1] && !halls[2]){
+      setPhases(PH_Z, PH_H, PH_L);
+    }else if(!halls[0] && halls[1] && !halls[2]){
+      setPhases(PH_L, PH_H, PH_Z);
+    }else if(!halls[0] && halls[1] && halls[2]){
+      setPhases(PH_L, PH_Z, PH_H);
+    }else{ // UNEXPECTED VALUE
+      setPhases(PH_Z, PH_Z, PH_Z); // DISABLE PHASES
+    }     
   } else {
-      __NOP();
+    __NOP();
   }
 }
 /* USER CODE END 4 */
